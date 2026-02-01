@@ -5,3 +5,4 @@ export { CategoryFilter } from './CategoryFilter';
 export { Header } from './Header';
 export { Footer } from './Footer';
 export { PlaceInRoomForm } from './PlaceInRoomForm';
+export { ElevenLabsWidget } from './elevenlabs-widget/ElevenLabsWidget';

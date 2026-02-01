@@ -1,4 +1,3 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import type {
   Product,
   ViewType,
@@ -7,6 +6,9 @@ import type {
   AIGenerationResponse,
   AIGenerationOptions,
 } from '@/types';
+
+const XAI_BASE = 'https://api.x.ai/v1';
+const GROK_IMAGE_MODEL = 'grok-imagine-image';
 
 // View configurations with prompt modifiers
 export const VIEW_CONFIGS: Record<ViewType, ViewConfig> = {
@@ -113,77 +115,87 @@ Photorealistic product photography quality, suitable for e-commerce and marketin
 }
 
 /**
- * AI Service Class for image generation
- * Abstraction layer for Gemini or other vision models
+ * AI Service for image generation using xAI Grok (grok-imagine-image)
  */
 class AIService {
-  private client: GoogleGenerativeAI | null = null;
-  private modelName = 'gemini-2.0-flash-exp'; // Supports image generation
+  private apiKey: string | null = null;
 
   constructor() {
-    const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY;
-    if (apiKey) {
-      this.client = new GoogleGenerativeAI(apiKey);
-    }
+    this.apiKey = process.env.XAI_API_KEY?.trim() || null;
   }
 
-  /**
-   * Check if AI service is available
-   */
   isAvailable(): boolean {
-    return this.client !== null;
+    return this.apiKey !== null;
   }
 
   /**
-   * Generate a new view of a product using AI
+   * Generate a new view of a product using Grok image edit
    */
   async generateView(request: AIGenerationRequest): Promise<AIGenerationResponse> {
     const { product, viewType, options = {} } = request;
     const startTime = Date.now();
-
-    // Generate the prompt
     const prompt = generatePrompt(product, viewType, options);
 
-    // If no API key, return mock data for development
-    if (!this.client) {
+    if (!this.apiKey) {
       return this.getMockResponse(product, viewType, prompt, startTime);
     }
 
     try {
-      const model = this.client.getGenerativeModel({ model: this.modelName });
-
-      // For image generation, we would use Imagen or similar
-      // Gemini Vision can understand images but generation requires specific models
-      // This shows the integration pattern - actual generation would use Imagen API
-
-      // Fetch and encode the base image
       const imageResponse = await fetch(product.baseImage);
       const imageBuffer = await imageResponse.arrayBuffer();
       const base64Image = Buffer.from(imageBuffer).toString('base64');
-      const mimeType = 'image/jpeg';
+      const mimeType = (imageResponse.headers.get('content-type') || 'image/jpeg').split(';')[0].trim();
+      const dataUrl = `data:${mimeType};base64,${base64Image}`;
 
-      // Use Gemini to analyze and guide generation
-      const result = await model.generateContent([
-        {
-          inlineData: {
-            mimeType,
-            data: base64Image,
-          },
+      const editRes = await fetch(`${XAI_BASE}/images/edits`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.apiKey}`,
         },
-        prompt,
-      ]);
+        body: JSON.stringify({
+          model: GROK_IMAGE_MODEL,
+          image: { url: dataUrl },
+          prompt,
+        }),
+      });
 
-      const response = await result.response;
-      // The response text contains AI analysis - log for debugging
-      console.log('AI analysis:', response.text());
+      if (!editRes.ok) {
+        const errText = await editRes.text();
+        console.error('Grok image edit error:', editRes.status, errText);
+        let message = `Image generation failed: ${editRes.status}`;
+        try {
+          const errJson = JSON.parse(errText);
+          if (errJson.error?.message) message = errJson.error.message;
+        } catch {
+          // use default
+        }
+        return {
+          success: false,
+          error: message,
+        };
+      }
 
-      // In production, this would call an image generation API
-      // and return the generated image URL
+      const editResult = (await editRes.json()) as {
+        data?: Array<{ b64_json?: string; url?: string }>;
+      };
+      const first = editResult.data?.[0];
+      if (!first) {
+        return {
+          success: false,
+          error: 'No image was generated.',
+        };
+      }
+
+      const imageUrl = first.b64_json
+        ? `data:image/png;base64,${first.b64_json}`
+        : first.url ?? product.baseImage;
+
       return {
         success: true,
-        imageUrl: product.baseImage, // Placeholder - would be generated image
+        imageUrl,
         metadata: {
-          model: this.modelName,
+          model: GROK_IMAGE_MODEL,
           generationTime: Date.now() - startTime,
           promptUsed: prompt,
         },
