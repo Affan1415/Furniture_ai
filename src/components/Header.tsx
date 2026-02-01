@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 
 const navigation = [
   { name: 'Shop All', href: '/' },
+  { name: 'Place in Room', href: '/place-in-room' },
   { name: 'Chairs', href: '/?category=chair' },
   { name: 'Sofas', href: '/?category=sofa' },
   { name: 'Tables', href: '/?category=table' },
