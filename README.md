@@ -8,6 +8,7 @@ A modern, production-ready Next.js application for showcasing furniture products
 - **AI-Powered Visualization**: Generate multiple product views (front, side, 45° angle, in-room) using Gemini Vision
 - **Modern Design**: Clean, premium furniture-brand aesthetic (IKEA × BoConcept inspired)
 - **Responsive**: Mobile-first, fully responsive design
+- 
 
 - 
 - **Performance Optimized**: Image optimization, lazy loading, streaming
