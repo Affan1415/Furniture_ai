@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getProduct } from '@/lib/products';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
@@ -47,20 +48,27 @@ export async function POST(request: NextRequest) {
     }
 
     const formData = await request.formData();
-    const furnitureImage = formData.get('furnitureImage') as File | null;
+    const furnitureProductId = formData.get('furnitureProductId') as string | null;
     const roomImage = formData.get('roomImage') as File | null;
 
-    if (!furnitureImage || !roomImage) {
+    if (!roomImage) {
       return NextResponse.json(
-        { success: false, error: 'Both furniture image and room image are required.' },
+        { success: false, error: 'Room image is required.' },
         { status: 400 }
       );
     }
 
-    const furnitureValidation = validateImageFile(furnitureImage, 'Furniture image');
-    if (!furnitureValidation.ok) {
+    if (!furnitureProductId?.trim()) {
       return NextResponse.json(
-        { success: false, error: furnitureValidation.error },
+        { success: false, error: 'Please select a furniture piece from our collection.' },
+        { status: 400 }
+      );
+    }
+
+    const product = getProduct(furnitureProductId.trim());
+    if (!product?.baseImage) {
+      return NextResponse.json(
+        { success: false, error: 'Selected furniture is not available.' },
         { status: 400 }
       );
     }
@@ -73,15 +81,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const [furnitureBuffer, roomBuffer] = await Promise.all([
-      furnitureImage.arrayBuffer(),
-      roomImage.arrayBuffer(),
-    ]);
-    const furnitureType = furnitureImage.type || 'image/jpeg';
-    const roomType = roomImage.type || 'image/jpeg';
+    // Fetch furniture image from product's baseImage URL
+    const furnitureRes = await fetch(product.baseImage);
+    if (!furnitureRes.ok) {
+      return NextResponse.json(
+        { success: false, error: 'Could not load the selected furniture image.' },
+        { status: 400 }
+      );
+    }
+    const furnitureBuffer = await furnitureRes.arrayBuffer();
+    const furnitureContentType = furnitureRes.headers.get('content-type')?.split(';')[0]?.trim() || 'image/jpeg';
     const furnitureB64 = Buffer.from(furnitureBuffer).toString('base64');
+    const furnitureDataUrl = `data:${furnitureContentType};base64,${furnitureB64}`;
+
+    const roomBuffer = await roomImage.arrayBuffer();
+    const roomType = roomImage.type || 'image/jpeg';
     const roomB64 = Buffer.from(roomBuffer).toString('base64');
-    const furnitureDataUrl = `data:${furnitureType};base64,${furnitureB64}`;
     const roomDataUrl = `data:${roomType};base64,${roomB64}`;
 
     // Step 1: Describe the furniture from the user's furniture image
