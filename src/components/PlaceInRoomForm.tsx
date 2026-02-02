@@ -3,30 +3,67 @@
 import { useState, useRef } from 'react';
 import { Upload, Image as ImageIcon, Loader2, Sparkles } from 'lucide-react';
 
+const ACCEPT =
+  'image/jpeg,image/png,image/webp,image/heic,image/heif';
+const ALLOWED_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+
+async function ensureJpegOrPng(file: File): Promise<File> {
+  const type = (file.type || '').toLowerCase();
+  if (type === 'image/heic' || type === 'image/heif') {
+    const heic2any = (await import('heic2any')).default;
+    const blob = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+    const b = Array.isArray(blob) ? blob[0] : blob;
+    const name = file.name.replace(/\.[^.]+$/i, '.jpg');
+    return new File([b], name, { type: 'image/jpeg' });
+  }
+  return file;
+}
+
 export function PlaceInRoomForm() {
   const [furnitureFile, setFurnitureFile] = useState<File | null>(null);
   const [roomFile, setRoomFile] = useState<File | null>(null);
   const [result, setResult] = useState<{ dataUrl: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [converting, setConverting] = useState(false);
   const furnitureInputRef = useRef<HTMLInputElement>(null);
   const roomInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFurnitureChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFurnitureChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && file.type.startsWith('image/')) {
-      setFurnitureFile(file);
-      setError(null);
-      setResult(null);
+    if (!file || !ALLOWED_TYPES.includes((file.type || '').toLowerCase())) {
+      setError('Please choose a JPEG, PNG, WebP or HEIC image (e.g. from your phone).');
+      return;
+    }
+    setConverting(true);
+    setError(null);
+    setResult(null);
+    try {
+      const converted = await ensureJpegOrPng(file);
+      setFurnitureFile(converted);
+    } catch {
+      setError('Could not use this image. Try JPEG or PNG.');
+    } finally {
+      setConverting(false);
     }
   };
 
-  const handleRoomChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleRoomChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file && file.type.startsWith('image/')) {
-      setRoomFile(file);
-      setError(null);
-      setResult(null);
+    if (!file || !ALLOWED_TYPES.includes((file.type || '').toLowerCase())) {
+      setError('Please choose a JPEG, PNG, WebP or HEIC image (e.g. from your phone).');
+      return;
+    }
+    setConverting(true);
+    setError(null);
+    setResult(null);
+    try {
+      const converted = await ensureJpegOrPng(file);
+      setRoomFile(converted);
+    } catch {
+      setError('Could not use this image. Try JPEG or PNG.');
+    } finally {
+      setConverting(false);
     }
   };
 
@@ -93,7 +130,7 @@ export function PlaceInRoomForm() {
               <input
                 ref={furnitureInputRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept={ACCEPT}
                 onChange={handleFurnitureChange}
                 className="hidden"
               />
@@ -133,7 +170,7 @@ export function PlaceInRoomForm() {
               <input
                 ref={roomInputRef}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept={ACCEPT}
                 onChange={handleRoomChange}
                 className="hidden"
               />
@@ -151,12 +188,16 @@ export function PlaceInRoomForm() {
                 <>
                   <Upload className="w-12 h-12 text-stone-400 mb-2" />
                   <p className="text-sm text-stone-600">Click to upload</p>
-                  <p className="text-xs text-stone-500 mt-1">JPEG, PNG or WebP</p>
+                  <p className="text-xs text-stone-500 mt-1">JPEG, PNG, WebP or HEIC (e.g. from phone)</p>
                 </>
               )}
             </div>
           </div>
         </div>
+
+        {converting && (
+          <p className="text-sm text-stone-500">Converting image…</p>
+        )}
 
         {error && (
           <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
@@ -167,7 +208,7 @@ export function PlaceInRoomForm() {
         <div className="flex flex-wrap gap-4">
           <button
             type="submit"
-            disabled={loading || !furnitureFile || !roomFile}
+            disabled={loading || converting || !furnitureFile || !roomFile}
             className="inline-flex items-center gap-2 px-6 py-3 bg-stone-900 text-white font-medium rounded-lg hover:bg-stone-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             {loading ? (
